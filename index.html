@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OMOGGLE — Status Mog Battle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;600;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #060608; --surface: #0d0d12; --card: #13131a; --border: #1e1e2e;
+    --neon-green: #00ff88; --neon-red: #ff2d55; --neon-blue: #00c8ff;
+    --neon-yellow: #ffd60a; --neon-purple: #bf5af2;
+    --text: #f0f0f8; --muted: #555570;
+    --font-display: 'Bebas Neue', sans-serif;
+    --font-mono: 'Space Mono', monospace;
+    --font-body: 'DM Sans', sans-serif;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:var(--font-body); overflow-x:hidden; }
+  body::before { content:''; position:fixed; inset:0; pointer-events:none; z-index:9999; background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px); }
+
+  .screen { display:none; min-height:100vh; }
+  .screen.active { display:flex; }
+
+  .bg-grid { position:fixed; inset:0; pointer-events:none; background-image:linear-gradient(rgba(0,200,255,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(0,200,255,0.04) 1px,transparent 1px); background-size:60px 60px; }
+  .bg-glow { position:fixed; width:600px; height:600px; border-radius:50%; filter:blur(120px); pointer-events:none; animation:glowDrift 8s ease-in-out infinite alternate; }
+  .bg-glow.g1 { background:rgba(0,255,136,0.07); top:-200px; left:-100px; }
+  .bg-glow.g2 { background:rgba(0,200,255,0.07); bottom:-200px; right:-100px; animation-delay:-4s; }
+  @keyframes glowDrift { from{transform:translate(0,0)scale(1)} to{transform:translate(40px,30px)scale(1.1)} }
+
+  /* LANDING */
+  #screen-landing { flex-direction:column; align-items:center; justify-content:center; padding:40px 20px; }
+  .landing-logo { font-family:var(--font-display); font-size:clamp(72px,14vw,160px); letter-spacing:4px; line-height:0.9; text-align:center; position:relative; z-index:2; }
+  .logo-omo { color:var(--text); display:block; }
+  .logo-ggle { color:var(--neon-green); display:block; text-shadow:0 0 40px rgba(0,255,136,0.6),0 0 80px rgba(0,255,136,0.2); animation:logoPulse 3s ease-in-out infinite; }
+  @keyframes logoPulse { 0%,100%{text-shadow:0 0 40px rgba(0,255,136,0.6),0 0 80px rgba(0,255,136,0.2)} 50%{text-shadow:0 0 60px rgba(0,255,136,0.9),0 0 120px rgba(0,255,136,0.4)} }
+  .landing-tagline { font-family:var(--font-mono); font-size:clamp(12px,2vw,16px); color:var(--neon-blue); text-align:center; margin-top:16px; letter-spacing:3px; text-transform:uppercase; position:relative; z-index:2; }
+  .landing-sub { font-size:18px; color:var(--muted); text-align:center; margin-top:10px; font-weight:300; position:relative; z-index:2; }
+  .live-counter { display:flex; align-items:center; gap:10px; margin-top:28px; background:var(--card); border:1px solid var(--border); border-radius:100px; padding:10px 20px; position:relative; z-index:2; }
+  .live-dot { width:8px; height:8px; border-radius:50%; background:var(--neon-green); box-shadow:0 0 10px var(--neon-green); animation:blink 1.2s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
+  .live-text { font-family:var(--font-mono); font-size:13px; }
+  .live-count { color:var(--neon-green); font-weight:700; }
+  .example-feed { display:flex; gap:12px; margin-top:36px; flex-wrap:wrap; justify-content:center; max-width:700px; position:relative; z-index:2; }
+  .example-card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:10px 16px; font-family:var(--font-mono); font-size:12px; color:var(--muted); transition:all 0.3s; }
+  .example-card:hover { border-color:var(--neon-green); color:var(--neon-green); transform:translateY(-2px); }
+  .example-card .label { color:var(--text); font-weight:700; display:block; margin-bottom:2px; }
+  .btn-cta { margin-top:40px; position:relative; z-index:2; background:var(--neon-green); color:#000; border:none; font-family:var(--font-display); font-size:32px; letter-spacing:3px; padding:18px 60px; border-radius:6px; cursor:pointer; transition:all 0.2s; box-shadow:0 0 40px rgba(0,255,136,0.3); }
+  .btn-cta:hover { transform:scale(1.05) translateY(-2px); box-shadow:0 0 60px rgba(0,255,136,0.5); }
+  .btn-cta-sub { display:block; font-family:var(--font-mono); font-size:11px; letter-spacing:2px; margin-top:4px; opacity:0.7; }
+  .landing-disclaimer { margin-top:20px; font-size:12px; color:var(--muted); text-align:center; position:relative; z-index:2; }
+
+  /* CAMERA */
+  #screen-camera { flex-direction:column; align-items:center; justify-content:center; gap:24px; padding:40px; }
+  .cam-icon { width:100px; height:100px; border-radius:50%; background:var(--card); border:2px solid var(--neon-blue); display:flex; align-items:center; justify-content:center; font-size:40px; animation:camPulse 2s ease-in-out infinite; }
+  @keyframes camPulse { 0%,100%{box-shadow:0 0 40px rgba(0,200,255,0.2)} 50%{box-shadow:0 0 80px rgba(0,200,255,0.4)} }
+  .cam-title { font-family:var(--font-display); font-size:48px; letter-spacing:2px; }
+  .cam-desc { color:var(--muted); text-align:center; max-width:360px; line-height:1.6; }
+  .btn-primary { background:var(--neon-blue); color:#000; border:none; font-family:var(--font-display); font-size:24px; letter-spacing:2px; padding:14px 48px; border-radius:6px; cursor:pointer; transition:all 0.2s; box-shadow:0 0 30px rgba(0,200,255,0.3); }
+  .btn-primary:hover { transform:translateY(-2px); }
+
+  /* BATTLE */
+  #screen-battle { flex-direction:column; height:100vh; overflow:hidden; }
+  .battle-header { display:flex; align-items:center; justify-content:space-between; padding:16px 24px; background:rgba(0,0,0,0.5); backdrop-filter:blur(10px); border-bottom:1px solid var(--border); z-index:10; flex-shrink:0; }
+  .battle-logo { font-family:var(--font-display); font-size:28px; letter-spacing:3px; color:var(--neon-green); text-shadow:0 0 20px rgba(0,255,136,0.4); }
+  .battle-status { font-family:var(--font-mono); font-size:12px; color:var(--neon-blue); letter-spacing:2px; text-transform:uppercase; }
+  .btn-skip { background:transparent; border:1px solid var(--border); color:var(--muted); font-family:var(--font-mono); font-size:12px; padding:8px 16px; border-radius:4px; cursor:pointer; transition:all 0.2s; }
+  .btn-skip:hover { border-color:var(--neon-red); color:var(--neon-red); }
+  .battle-arena { flex:1; display:grid; grid-template-columns:1fr 1fr; position:relative; overflow:hidden; }
+  .player-slot { position:relative; overflow:hidden; background:#000; }
+  .player-slot video { width:100%; height:100%; object-fit:cover; display:block; }
+  .slot-overlay { position:absolute; inset:0; background:linear-gradient(to top,rgba(0,0,0,0.8) 0%,transparent 50%); pointer-events:none; }
+  .player-label { position:absolute; top:16px; left:16px; font-family:var(--font-mono); font-size:11px; letter-spacing:2px; text-transform:uppercase; background:rgba(0,0,0,0.5); backdrop-filter:blur(10px); padding:6px 12px; border-radius:4px; border:1px solid var(--border); z-index:5; }
+  .waiting-state { width:100%; height:100%; background:linear-gradient(135deg,#0a0a14,#141428); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:16px; }
+  .waiting-avatar { width:120px; height:120px; border-radius:50%; background:var(--card); border:2px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:56px; }
+  .waiting-text { font-family:var(--font-mono); font-size:13px; color:var(--muted); letter-spacing:2px; animation:searchDot 1.5s ease-in-out infinite; }
+  @keyframes searchDot { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .vs-divider { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:20; display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .vs-text { font-family:var(--font-display); font-size:48px; color:var(--neon-yellow); text-shadow:0 0 30px rgba(255,214,10,0.6); line-height:1; }
+  .vs-line { width:2px; height:60px; background:linear-gradient(to bottom,transparent,var(--neon-yellow),transparent); }
+  .countdown-overlay { position:absolute; inset:0; background:rgba(0,0,0,0.7); display:none; align-items:center; justify-content:center; z-index:30; flex-direction:column; gap:16px; }
+  .countdown-overlay.show { display:flex; }
+  .countdown-number { font-family:var(--font-display); font-size:160px; color:var(--neon-green); text-shadow:0 0 60px rgba(0,255,136,0.7); animation:countPop 1s ease-in-out; line-height:1; }
+  @keyframes countPop { 0%{transform:scale(1.5);opacity:0} 30%{transform:scale(0.9);opacity:1} 80%{transform:scale(1);opacity:1} 100%{transform:scale(1.1);opacity:0} }
+  .countdown-label { font-family:var(--font-mono); font-size:16px; letter-spacing:4px; color:var(--neon-blue); text-transform:uppercase; }
+
+  /* RESULT */
+  #screen-result { flex-direction:column; align-items:center; height:100vh; overflow-y:auto; }
+  .result-bg { position:fixed; inset:0; z-index:0; }
+  .result-bg.win { background:radial-gradient(ellipse at center,rgba(0,255,136,0.15) 0%,transparent 70%); }
+  .result-bg.lose { background:radial-gradient(ellipse at center,rgba(255,45,85,0.15) 0%,transparent 70%); }
+  .result-container { position:relative; z-index:1; width:100%; max-width:900px; margin:0 auto; padding:32px 24px; display:flex; flex-direction:column; align-items:center; gap:24px; }
+  .result-verdict { font-family:var(--font-display); font-size:clamp(52px,10vw,100px); text-align:center; line-height:1; letter-spacing:2px; animation:verdictIn 0.6s cubic-bezier(0.175,0.885,0.32,1.275) both; }
+  .result-verdict.win { color:var(--neon-green); text-shadow:0 0 60px rgba(0,255,136,0.6); }
+  .result-verdict.lose { color:var(--neon-red); text-shadow:0 0 60px rgba(255,45,85,0.6); }
+  .result-verdict.tie { color:var(--neon-yellow); }
+  @keyframes verdictIn { from{transform:scale(0.3) rotate(-5deg);opacity:0} to{transform:scale(1) rotate(0deg);opacity:1} }
+  .result-subtitle { font-family:var(--font-mono); font-size:14px; color:var(--muted); letter-spacing:3px; text-transform:uppercase; animation:fadeUp 0.5s 0.4s ease both; }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+  .players-comparison { display:grid; grid-template-columns:1fr auto 1fr; gap:16px; width:100%; animation:fadeUp 0.5s 0.6s ease both; }
+  .player-result-card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:20px; display:flex; flex-direction:column; gap:12px; position:relative; overflow:hidden; }
+  .player-result-card.winner { border-color:var(--neon-green); box-shadow:0 0 40px rgba(0,255,136,0.15); }
+  .player-result-card.loser { border-color:var(--neon-red); opacity:0.85; }
+  .card-badge { position:absolute; top:12px; right:12px; font-family:var(--font-mono); font-size:10px; letter-spacing:2px; padding:4px 10px; border-radius:100px; text-transform:uppercase; }
+  .player-result-card.winner .card-badge { background:rgba(0,255,136,0.15); color:var(--neon-green); border:1px solid rgba(0,255,136,0.3); }
+  .player-result-card.loser .card-badge { background:rgba(255,45,85,0.1); color:var(--neon-red); border:1px solid rgba(255,45,85,0.3); }
+  .card-player-name { font-family:var(--font-mono); font-size:12px; color:var(--muted); letter-spacing:2px; text-transform:uppercase; }
+  .card-aura-title { font-family:var(--font-display); font-size:28px; line-height:1.1; }
+  .player-result-card.winner .card-aura-title { color:var(--neon-green); }
+  .player-result-card.loser .card-aura-title { color:var(--text); }
+  .card-roast { font-size:13px; color:var(--muted); line-height:1.5; font-style:italic; }
+  .score-bars { display:flex; flex-direction:column; gap:8px; }
+  .score-bar-row { display:flex; align-items:center; gap:8px; }
+  .score-bar-label { font-family:var(--font-mono); font-size:10px; color:var(--muted); text-transform:uppercase; min-width:60px; }
+  .score-bar-track { flex:1; height:4px; background:var(--border); border-radius:2px; overflow:hidden; }
+  .score-bar-fill { height:100%; border-radius:2px; transition:width 1.2s cubic-bezier(0.4,0,0.2,1); width:0%; }
+  .player-result-card.winner .score-bar-fill { background:linear-gradient(90deg,var(--neon-green),#00ffcc); }
+  .player-result-card.loser .score-bar-fill { background:linear-gradient(90deg,var(--muted),#334); }
+  .score-bar-value { font-family:var(--font-mono); font-size:10px; color:var(--muted); min-width:28px; text-align:right; }
+  .card-tags { display:flex; flex-wrap:wrap; gap:6px; }
+  .tag { font-family:var(--font-mono); font-size:10px; padding:4px 10px; border-radius:100px; border:1px solid var(--border); color:var(--muted); text-transform:uppercase; }
+  .player-result-card.winner .tag { border-color:rgba(0,255,136,0.2); color:rgba(0,255,136,0.7); background:rgba(0,255,136,0.05); }
+  .result-vs { display:flex; align-items:center; justify-content:center; flex-direction:column; gap:8px; }
+  .result-vs-text { font-family:var(--font-display); font-size:36px; color:var(--neon-yellow); }
+  .score-diff { font-family:var(--font-mono); font-size:11px; color:var(--muted); text-align:center; }
+  .overall-score-row { display:flex; gap:8px; align-items:center; justify-content:center; animation:fadeUp 0.5s 0.8s ease both; width:100%; }
+  .overall-score-bar { flex:1; height:8px; background:var(--border); border-radius:100px; overflow:hidden; max-width:300px; display:flex; }
+  .overall-fill-left { height:100%; background:linear-gradient(90deg,var(--neon-green),#00ffaa); transition:width 1.5s cubic-bezier(0.4,0,0.2,1); border-radius:100px 0 0 100px; }
+  .overall-fill-right { height:100%; background:linear-gradient(90deg,var(--neon-red),#ff6090); transition:width 1.5s cubic-bezier(0.4,0,0.2,1); border-radius:0 100px 100px 0; }
+  .overall-score-num { font-family:var(--font-mono); font-size:18px; font-weight:700; min-width:40px; text-align:center; }
+  .overall-score-num.win-score { color:var(--neon-green); }
+  .overall-score-num.lose-score { color:var(--neon-red); }
+  .result-actions { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; animation:fadeUp 0.5s 1s ease both; }
+  .btn-action { font-family:var(--font-display); font-size:20px; letter-spacing:2px; padding:12px 32px; border-radius:6px; cursor:pointer; transition:all 0.2s; border:none; }
+  .btn-rematch { background:var(--neon-green); color:#000; }
+  .btn-rematch:hover { transform:translateY(-2px); box-shadow:0 0 50px rgba(0,255,136,0.4); }
+  .btn-next { background:var(--neon-blue); color:#000; }
+  .btn-next:hover { transform:translateY(-2px); }
+  .btn-share { background:transparent; color:var(--text); border:1px solid var(--border); font-size:18px; }
+  .btn-share:hover { border-color:var(--neon-purple); color:var(--neon-purple); }
+
+  /* ANALYSIS */
+  .analysis-overlay { position:fixed; inset:0; background:rgba(6,6,8,0.95); z-index:100; display:none; flex-direction:column; align-items:center; justify-content:center; gap:24px; }
+  .analysis-overlay.show { display:flex; }
+  .analysis-title { font-family:var(--font-display); font-size:56px; letter-spacing:3px; text-align:center; }
+  .analysis-scanning { font-family:var(--font-mono); font-size:13px; color:var(--neon-blue); letter-spacing:3px; text-transform:uppercase; animation:scanBlink 0.8s ease-in-out infinite; }
+  @keyframes scanBlink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .analysis-items { display:flex; flex-direction:column; gap:10px; width:340px; }
+  .analysis-item { display:flex; align-items:center; gap:12px; opacity:0; transform:translateX(-20px); transition:all 0.4s ease; background:var(--card); border:1px solid var(--border); padding:12px 16px; border-radius:8px; }
+  .analysis-item.done { opacity:1; transform:translateX(0); border-color:var(--neon-green); }
+  .analysis-item.active { opacity:1; transform:translateX(0); border-color:var(--neon-blue); }
+  .analysis-item-icon { font-size:20px; width:32px; text-align:center; }
+  .analysis-item-label { flex:1; font-family:var(--font-mono); font-size:12px; color:var(--text); letter-spacing:1px; text-transform:uppercase; }
+  .analysis-item-check { font-size:16px; opacity:0; transition:opacity 0.3s; }
+  .analysis-item.done .analysis-item-check { opacity:1; }
+  .analysis-bar-wrap { width:340px; background:var(--card); border:1px solid var(--border); border-radius:4px; height:4px; overflow:hidden; }
+  .analysis-bar { height:100%; background:linear-gradient(90deg,var(--neon-green),var(--neon-blue)); width:0%; transition:width 0.3s ease; }
+
+  /* MODAL */
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); backdrop-filter:blur(10px); z-index:200; display:none; align-items:center; justify-content:center; padding:20px; }
+  .modal-overlay.show { display:flex; }
+  .modal-box { background:var(--card); border:1px solid var(--border); border-radius:20px; padding:40px; max-width:480px; width:100%; display:flex; flex-direction:column; gap:20px; }
+  .modal-title { font-family:var(--font-display); font-size:36px; letter-spacing:2px; }
+  .modal-desc { color:var(--muted); font-size:14px; line-height:1.6; }
+  .modal-input { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:14px 16px; color:var(--text); font-family:var(--font-mono); font-size:13px; width:100%; outline:none; transition:border-color 0.2s; }
+  .modal-input:focus { border-color:var(--neon-blue); }
+  .modal-note { font-size:12px; color:var(--muted); background:var(--surface); padding:12px; border-radius:8px; border-left:3px solid var(--neon-blue); line-height:1.6; }
+  .modal-note a { color:var(--neon-blue); text-decoration:none; }
+  .btn-modal-confirm { background:var(--neon-green); color:#000; border:none; font-family:var(--font-display); font-size:22px; letter-spacing:2px; padding:14px; border-radius:8px; cursor:pointer; transition:all 0.2s; }
+  .btn-modal-confirm:hover { box-shadow:0 0 50px rgba(0,255,136,0.4); }
+
+  /* CONN STATUS */
+  .conn-pill { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); font-family:var(--font-mono); font-size:11px; letter-spacing:2px; padding:6px 16px; border-radius:100px; z-index:50; border:1px solid var(--border); background:var(--card); color:var(--muted); display:none; }
+  .conn-pill.show { display:block; }
+  .conn-pill.connecting { border-color:var(--neon-blue); color:var(--neon-blue); }
+  .conn-pill.connected { border-color:var(--neon-green); color:var(--neon-green); }
+  .conn-pill.error { border-color:var(--neon-red); color:var(--neon-red); }
+
+  /* STREAK */
+  .streak-badge { position:fixed; top:80px; right:24px; background:var(--card); border:1px solid var(--neon-yellow); border-radius:12px; padding:10px 16px; display:none; flex-direction:column; align-items:center; gap:2px; z-index:50; }
+  .streak-badge.show { display:flex; }
+  .streak-number { font-family:var(--font-display); font-size:32px; color:var(--neon-yellow); line-height:1; }
+  .streak-label { font-family:var(--font-mono); font-size:9px; letter-spacing:2px; color:var(--muted); text-transform:uppercase; }
+
+  /* TOAST */
+  .toast { position:fixed; bottom:40px; left:50%; transform:translateX(-50%) translateY(100px); background:var(--card); border:1px solid var(--border); padding:12px 24px; border-radius:100px; font-family:var(--font-mono); font-size:13px; transition:transform 0.4s cubic-bezier(0.175,0.885,0.32,1.275); z-index:300; white-space:nowrap; }
+  .toast.show { transform:translateX(-50%) translateY(0); }
+
+  @media (max-width:640px) {
+    .players-comparison { grid-template-columns:1fr; }
+    .result-vs { display:none; }
+    .battle-arena { grid-template-columns:1fr; grid-template-rows:1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LANDING -->
+<div id="screen-landing" class="screen active">
+  <div class="bg-grid"></div>
+  <div class="bg-glow g1"></div>
+  <div class="bg-glow g2"></div>
+  <div class="landing-logo">
+    <span class="logo-omo">OMO</span>
+    <span class="logo-ggle">GGLE</span>
+  </div>
+  <div class="landing-tagline">// AI Status Battle //</div>
+  <div class="landing-sub">Tu aura vs la suya. Solo uno sobrevive.</div>
+  <div class="live-counter">
+    <div class="live-dot"></div>
+    <span class="live-text"><span class="live-count" id="live-count">2,847</span> mogging right now</span>
+  </div>
+  <div class="example-feed">
+    <div class="example-card"><span class="label">Startup CEO Aura</span>vs Discord Mod Energy</div>
+    <div class="example-card"><span class="label">Gym Arc Final Boss</span>vs Unemployed Setup</div>
+    <div class="example-card"><span class="label">Main Character Vibes</span>vs NPC Room Energy</div>
+    <div class="example-card"><span class="label">Crypto Bro Detected</span>vs 9-to-5 Enjoyer</div>
+    <div class="example-card"><span class="label">Villain Arc In Progress</span>vs Sleeper Build</div>
+    <div class="example-card"><span class="label">Sigma Male Grindset</span>vs Couch Philosopher</div>
+  </div>
+  <button class="btn-cta" onclick="goToCamera()">
+    START MOGGING
+    <span class="btn-cta-sub">enable camera → instant result</span>
+  </button>
+  <p class="landing-disclaimer">🔞 18+ · No recording · Pure entertainment</p>
+</div>
+
+<!-- CAMERA -->
+<div id="screen-camera" class="screen">
+  <div class="bg-grid"></div>
+  <div class="cam-icon">📷</div>
+  <div class="cam-title">ENABLE CAMERA</div>
+  <p class="cam-desc">Necesitamos acceso a tu cámara para analizar tu aura.<br>Nadie graba nada. Solo la IA te juzga.</p>
+  <button class="btn-primary" onclick="requestCamera()">ALLOW CAMERA</button>
+  <p class="landing-disclaimer">Tu cámara solo se usa localmente en este dispositivo</p>
+</div>
+
+<!-- BATTLE -->
+<div id="screen-battle" class="screen">
+  <div class="battle-header">
+    <div class="battle-logo">OMOGGLE</div>
+    <div class="battle-status" id="battle-status">SEARCHING OPPONENT...</div>
+    <button class="btn-skip" onclick="doSkip()">SKIP ✕</button>
+  </div>
+  <div class="battle-arena">
+    <div class="player-slot">
+      <video id="local-video" autoplay muted playsinline></video>
+      <div class="slot-overlay"></div>
+      <div class="player-label">YOU</div>
+    </div>
+    <div class="vs-divider">
+      <div class="vs-line"></div>
+      <div class="vs-text">VS</div>
+      <div class="vs-line"></div>
+    </div>
+    <div class="player-slot">
+      <div class="waiting-state" id="waiting-state">
+        <div class="waiting-avatar">👤</div>
+        <div class="waiting-text" id="waiting-text">Searching opponent...</div>
+      </div>
+      <video id="remote-video" autoplay playsinline style="display:none;width:100%;height:100%;object-fit:cover;"></video>
+      <div class="slot-overlay"></div>
+      <div class="player-label" style="right:16px;left:auto;">OPPONENT</div>
+    </div>
+  </div>
+  <div class="countdown-overlay" id="countdown-overlay">
+    <div class="countdown-number" id="countdown-num">3</div>
+    <div class="countdown-label">ANALYZING AURA</div>
+  </div>
+</div>
+
+<!-- RESULT -->
+<div id="screen-result" class="screen">
+  <div class="result-bg" id="result-bg"></div>
+  <div class="result-container">
+    <div class="result-verdict" id="result-verdict">—</div>
+    <div class="result-subtitle" id="result-subtitle">—</div>
+    <div class="overall-score-row">
+      <div class="overall-score-num win-score" id="score-you">0</div>
+      <div class="overall-score-bar">
+        <div class="overall-fill-left" id="bar-you" style="width:0%"></div>
+        <div class="overall-fill-right" id="bar-opp" style="width:0%"></div>
+      </div>
+      <div class="overall-score-num lose-score" id="score-opp">0</div>
+    </div>
+    <div class="players-comparison">
+      <div class="player-result-card" id="card-you">
+        <div class="card-badge" id="badge-you">W</div>
+        <div class="card-player-name">TÚ</div>
+        <div class="card-aura-title" id="aura-you">—</div>
+        <div class="card-roast" id="roast-you">—</div>
+        <div class="score-bars" id="bars-you"></div>
+        <div class="card-tags" id="tags-you"></div>
+      </div>
+      <div class="result-vs">
+        <div class="result-vs-text">VS</div>
+        <div class="score-diff" id="score-diff">—</div>
+      </div>
+      <div class="player-result-card" id="card-opp">
+        <div class="card-badge" id="badge-opp">L</div>
+        <div class="card-player-name">OPONENTE</div>
+        <div class="card-aura-title" id="aura-opp">—</div>
+        <div class="card-roast" id="roast-opp">—</div>
+        <div class="score-bars" id="bars-opp"></div>
+        <div class="card-tags" id="tags-opp"></div>
+      </div>
+    </div>
+    <div class="result-actions">
+      <button class="btn-action btn-rematch" onclick="doRematch()">🔄 REMATCH</button>
+      <button class="btn-action btn-next" onclick="doRematch()">⚡ NEXT PERSON</button>
+      <button class="btn-action btn-share" onclick="shareResult()">📤 SHARE</button>
+    </div>
+  </div>
+</div>
+
+<!-- ANALYSIS OVERLAY -->
+<div class="analysis-overlay" id="analysis-overlay">
+  <div class="analysis-title">SCANNING<br>YOUR AURA...</div>
+  <div class="analysis-scanning" id="analysis-scanning-text">INITIALIZING...</div>
+  <div class="analysis-items">
+    <div class="analysis-item"><div class="analysis-item-icon">🏠</div><div class="analysis-item-label">Room Setup</div><div class="analysis-item-check">✓</div></div>
+    <div class="analysis-item"><div class="analysis-item-icon">💡</div><div class="analysis-item-label">Lighting Quality</div><div class="analysis-item-check">✓</div></div>
+    <div class="analysis-item"><div class="analysis-item-icon">👕</div><div class="analysis-item-label">Outfit Vibe</div><div class="analysis-item-check">✓</div></div>
+    <div class="analysis-item"><div class="analysis-item-icon">😐</div><div class="analysis-item-label">Facial Expression</div><div class="analysis-item-check">✓</div></div>
+    <div class="analysis-item"><div class="analysis-item-icon">🌌</div><div class="analysis-item-label">Background Aura</div><div class="analysis-item-check">✓</div></div>
+    <div class="analysis-item"><div class="analysis-item-icon">⚡</div><div class="analysis-item-label">Overall Status</div><div class="analysis-item-check">✓</div></div>
+  </div>
+  <div class="analysis-bar-wrap"><div class="analysis-bar" id="analysis-bar"></div></div>
+</div>
+
+<!-- API KEY MODAL -->
+<div class="modal-overlay" id="modal-apikey">
+  <div class="modal-box">
+    <div class="modal-title">SETUP API KEY</div>
+    <p class="modal-desc">Para el análisis de IA necesitas una API key de Google Gemini. Es <strong style="color:var(--neon-green)">100% gratis</strong>, sin tarjeta.</p>
+    <input class="modal-input" type="password" id="api-key-input" placeholder="AIzaSy..."/>
+    <div class="modal-note">
+      🔑 Consigue tu key gratis (2 min):<br>
+      1. Ve a <a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a><br>
+      2. Login con Google → "Get API key" → "Create API key"<br>
+      3. Copia la key (<code style="color:var(--neon-blue)">AIza...</code>) y pégala aquí<br><br>
+      🔒 Solo se guarda en tu navegador.
+    </div>
+    <button class="btn-modal-confirm" onclick="saveApiKey()">SAVE & START MOGGING</button>
+  </div>
+</div>
+
+<div class="streak-badge" id="streak-badge">
+  <div class="streak-number" id="streak-num">0</div>
+  <div class="streak-label">MOG STREAK</div>
+</div>
+<div class="conn-pill" id="conn-pill"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════
+const SUPABASE_URL = 'https://zarwhhfvdlygaqnvfcma.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_lfyncdFGRvX6zq8T1x3q1A_T1sVWtuF';
+const ICE_SERVERS = { iceServers: [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+]};
+
+// ══════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════
+let apiKey = localStorage.getItem('omoggle_gemini_key') || '';
+let localStream = null;
+let pc = null;
+let roomId = null;
+let myRole = null;
+let sb = null;
+let roomSub = null;
+let matchFound = false;
+let candidateQueue = [];
+let mogStreak = 0;
+let currentResult = null;
+
+// ══════════════════════════════════════════
+// INIT SUPABASE
+// ══════════════════════════════════════════
+function getSB() {
+  if (!sb) sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  return sb;
+}
+
+// ══════════════════════════════════════════
+// LIVE COUNTER (fake but convincing)
+// ══════════════════════════════════════════
+!function() {
+  const el = document.getElementById('live-count');
+  let n = 2847;
+  setInterval(() => {
+    n = Math.min(Math.max(n + Math.floor(Math.random()*7)-3, 2400), 3400);
+    el.textContent = n.toLocaleString();
+  }, 2000);
+}();
+
+// ══════════════════════════════════════════
+// SCREENS
+// ══════════════════════════════════════════
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function goToCamera() {
+  if (!apiKey) { document.getElementById('modal-apikey').classList.add('show'); return; }
+  showScreen('screen-camera');
+}
+
+function saveApiKey() {
+  const v = document.getElementById('api-key-input').value.trim();
+  if (!v.startsWith('AIza') || v.length < 20) { showToast('⚠️ API key inválida'); return; }
+  apiKey = v;
+  localStorage.setItem('omoggle_gemini_key', apiKey);
+  document.getElementById('modal-apikey').classList.remove('show');
+  showScreen('screen-camera');
+}
+
+// ══════════════════════════════════════════
+// CAMERA
+// ══════════════════════════════════════════
+async function requestCamera() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ video:{ width:1280, height:720 }, audio:true });
+    document.getElementById('local-video').srcObject = localStream;
+    showScreen('screen-battle');
+    setTimeout(joinQueue, 600);
+  } catch(e) {
+    showToast('❌ No se pudo acceder a la cámara');
+  }
+}
+
+// ══════════════════════════════════════════
+// MY PERSISTENT ID
+// ══════════════════════════════════════════
+function getMyId() {
+  let id = sessionStorage.getItem('omoggle_uid');
+  if (!id) { id = crypto.randomUUID(); sessionStorage.setItem('omoggle_uid', id); }
+  return id;
+}
+
+// ══════════════════════════════════════════
+// MATCHMAKING
+// ══════════════════════════════════════════
+async function joinQueue() {
+  await cleanupRTC();
+  matchFound = false;
+  setWaitingText('Searching opponent...');
+  setBattleStatus('SEARCHING OPPONENT...');
+  setConnPill('connecting', 'SEARCHING...');
+
+  const myId = getMyId();
+  const client = getSB();
+
+  // Try to find an open room
+  const { data: rooms } = await client
+    .from('rooms')
+    .select('*')
+    .eq('status', 'waiting')
+    .neq('player1_id', myId)
+    .order('created_at', { ascending: true })
+    .limit(5);
+
+  if (rooms && rooms.length > 0) {
+    // Join as player2
+    roomId = rooms[0].id;
+    myRole = 'player2';
+    await client.from('rooms').update({ player2_id: myId, status: 'matched' }).eq('id', roomId);
+    subscribeRoom();
+    setupPC();
+    // Fetch offer that player1 may have already written
+    const { data: room } = await client.from('rooms').select('*').eq('id', roomId).single();
+    if (room?.offer) await handleOffer(room.offer);
+  } else {
+    // Create room as player1
+    const { data: room } = await client
+      .from('rooms')
+      .insert({ player1_id: myId, status: 'waiting' })
+      .select().single();
+    roomId = room.id;
+    myRole = 'player1';
+    subscribeRoom();
+    setupPC();
+    setWaitingText('Waiting for opponent...');
+  }
+}
+
+// ══════════════════════════════════════════
+// SUPABASE REALTIME
+// ══════════════════════════════════════════
+function subscribeRoom() {
+  const client = getSB();
+  if (roomSub) { client.removeChannel(roomSub); roomSub = null; }
+  roomSub = client.channel('room-' + roomId)
+    .on('postgres_changes', { event:'UPDATE', schema:'public', table:'rooms', filter:`id=eq.${roomId}` },
+      (payload) => handleRoomUpdate(payload.new)
+    ).subscribe();
+}
+
+async function handleRoomUpdate(row) {
+  // Player1: opponent joined → create and send offer
+  if (myRole === 'player1' && row.status === 'matched' && row.player2_id && !matchFound) {
+    matchFound = true;
+    setWaitingText('Opponent found! Connecting...');
+    setBattleStatus('OPPONENT FOUND — CONNECTING...');
+    await sendOffer();
+  }
+
+  // Player2: received offer
+  if (myRole === 'player2' && row.offer && pc && !pc.remoteDescription) {
+    await handleOffer(row.offer);
+  }
+
+  // Player1: received answer
+  if (myRole === 'player1' && row.answer && pc && !pc.remoteDescription) {
+    await pc.setRemoteDescription(new RTCSessionDescription(row.answer));
+    await flushQueue();
+  }
+
+  // ICE candidates from the other side
+  const theirField = myRole === 'player1' ? row.player2_candidates : row.player1_candidates;
+  if (theirField && Array.isArray(theirField) && theirField.length > 0) {
+    for (const c of theirField) {
+      if (!c || c.__done) continue;
+      c.__done = true;
+      if (pc?.remoteDescription) {
+        try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch(_) {}
+      } else {
+        candidateQueue.push(c);
+      }
+    }
+  }
+}
+
+async function flushQueue() {
+  while (candidateQueue.length) {
+    const c = candidateQueue.shift();
+    try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch(_) {}
+  }
+}
+
+// ══════════════════════════════════════════
+// WEBRTC
+// ══════════════════════════════════════════
+function setupPC() {
+  pc = new RTCPeerConnection(ICE_SERVERS);
+  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+
+  pc.ontrack = (e) => {
+    const rv = document.getElementById('remote-video');
+    if (e.streams?.[0]) {
+      rv.srcObject = e.streams[0];
+      rv.style.display = 'block';
+      document.getElementById('waiting-state').style.display = 'none';
+      setConnPill('connected', 'P2P CONNECTED ✓');
+      setBattleStatus('OPPONENT CONNECTED — BATTLE START!');
+      setTimeout(startCountdown, 800);
+    }
+  };
+
+  const myField = myRole === 'player1' ? 'player1_candidates' : 'player2_candidates';
+  const myCands = [];
+  pc.onicecandidate = async (e) => {
+    if (e.candidate) {
+      myCands.push(e.candidate.toJSON());
+      await getSB().from('rooms').update({ [myField]: [...myCands] }).eq('id', roomId).catch(()=>{});
+    }
+  };
+
+  pc.onconnectionstatechange = () => {
+    const s = pc?.connectionState;
+    if (s === 'failed' || s === 'disconnected') {
+      setConnPill('error', 'CONNECTION LOST');
+      showToast('❌ Conexión perdida — buscando nuevo oponente...');
+      setTimeout(joinQueue, 2000);
+    }
+  };
+}
+
+async function sendOffer() {
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await getSB().from('rooms').update({ offer: { type: offer.type, sdp: offer.sdp } }).eq('id', roomId);
+}
+
+async function handleOffer(offerData) {
+  await pc.setRemoteDescription(new RTCSessionDescription(offerData));
+  await flushQueue();
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  await getSB().from('rooms').update({ answer: { type: answer.type, sdp: answer.sdp } }).eq('id', roomId);
+}
+
+// ══════════════════════════════════════════
+// CLEANUP
+// ══════════════════════════════════════════
+async function cleanupRTC() {
+  if (pc) { try { pc.close(); } catch(_) {} pc = null; }
+  if (roomSub) { try { getSB().removeChannel(roomSub); } catch(_) {} roomSub = null; }
+  if (roomId) {
+    await getSB().from('rooms').update({ status: 'done' }).eq('id', roomId).catch(()=>{});
+    roomId = null;
+  }
+  myRole = null; matchFound = false; candidateQueue = [];
+  const rv = document.getElementById('remote-video');
+  rv.srcObject = null; rv.style.display = 'none';
+  document.getElementById('waiting-state').style.display = 'flex';
+  setConnPill('', '');
+}
+
+// ══════════════════════════════════════════
+// COUNTDOWN
+// ══════════════════════════════════════════
+function startCountdown() {
+  const overlay = document.getElementById('countdown-overlay');
+  const numEl = document.getElementById('countdown-num');
+  overlay.classList.add('show');
+  let count = 3;
+  numEl.textContent = count;
+  const iv = setInterval(() => {
+    count--;
+    if (count <= 0) { clearInterval(iv); overlay.classList.remove('show'); runAnalysis(); }
+    else {
+      numEl.style.animation = 'none'; numEl.offsetHeight;
+      numEl.style.animation = 'countPop 1s ease-in-out';
+      numEl.textContent = count;
+    }
+  }, 1000);
+}
+
+// ══════════════════════════════════════════
+// AI ANALYSIS
+// ══════════════════════════════════════════
+async function runAnalysis() {
+  const overlay = document.getElementById('analysis-overlay');
+  overlay.classList.add('show');
+  const items = overlay.querySelectorAll('.analysis-item');
+  const bar = document.getElementById('analysis-bar');
+  const scanText = document.getElementById('analysis-scanning-text');
+  const labels = ['SCANNING ROOM...','READING LIGHTING...','JUDGING OUTFIT...','ANALYZING FACE...','AURA DETECTION...','CALCULATING STATUS...'];
+
+  for (let i = 0; i < items.length; i++) {
+    await sleep(360);
+    if (i > 0) { items[i-1].classList.remove('active'); items[i-1].classList.add('done'); }
+    items[i].classList.add('active');
+    scanText.textContent = labels[i];
+    bar.style.width = ((i+1)/items.length*90) + '%';
+  }
+  scanText.textContent = 'CALLING AI...';
+
+  let result;
+  try { result = await callGemini(); }
+  catch(e) { console.error(e); result = fallbackResult(); }
+
+  items[items.length-1].classList.remove('active');
+  items[items.length-1].classList.add('done');
+  bar.style.width = '100%';
+  await sleep(400);
+  overlay.classList.remove('show');
+  showResult(result);
+}
+
+async function callGemini() {
+  const prompt = `You are the AI engine of "Omoggle", a viral meme app where two people compete for "aura" and "status".
+
+Generate a FUNNY, BRUTAL, MEME-WORTHY battle result. Return ONLY valid JSON, no markdown, no explanation:
+
+{
+  "verdict": one of: "YOU MOGGED HIM" | "YOU GOT MOGGED" | "TOTAL ANNIHILATION" | "AURA STANDOFF",
+  "outcome": "win" | "lose" | "tie",
+  "subtitle": "savage subtitle max 40 chars",
+  "you": {
+    "aura_title": "funny label e.g. Startup CEO Aura",
+    "roast": "1-2 sentence brutal funny roast",
+    "score": 55-98,
+    "tags": ["tag1","tag2","tag3"],
+    "bars": [{"label":"Setup","value":40-98},{"label":"Drip","value":40-98},{"label":"Aura","value":40-98},{"label":"Energy","value":40-98}]
+  },
+  "opponent": {
+    "aura_title": "funny label for opponent",
+    "roast": "1-2 sentence brutal funny roast about opponent",
+    "score": 20-80,
+    "tags": ["tag1","tag2","tag3"],
+    "bars": [{"label":"Setup","value":20-80},{"label":"Drip","value":20-80},{"label":"Aura","value":20-80},{"label":"Energy","value":20-80}]
+  }
+}
+
+Use Gen Z internet slang: locked in, sigma, npc, main character, villain arc, sleeper build, mogged, aura diff.
+Be funny and slightly toxic but never mean about appearance.
+Randomize outcome — sometimes user wins, sometimes loses.
+ONLY return the JSON object.`;
+
+  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents:[{ parts:[{ text: prompt }] }], generationConfig:{ temperature:1.1, maxOutputTokens:900 } })
+  });
+
+  if (!resp.ok) { const e = await resp.json().catch(()=>({})); throw new Error(e?.error?.message || 'Gemini error'); }
+  const data = await resp.json();
+  const text = data.candidates[0].content.parts[0].text.replace(/```json|```/g,'').trim();
+  return JSON.parse(text);
+}
+
+function fallbackResult() {
+  const wins = Math.random() > 0.5;
+  return wins ? {
+    verdict:'YOU MOGGED HIM', outcome:'win', subtitle:'MASSIVE AURA DIFFERENTIAL',
+    you:{ aura_title:'Main Character Energy', roast:'Radiates "just woke up and already winning" energy. The setup alone costs more than the opponent\'s monthly budget.', score:87, tags:['locked in','sigma grindset','villain arc'], bars:[{label:'Setup',value:88},{label:'Drip',value:84},{label:'Aura',value:91},{label:'Energy',value:85}] },
+    opponent:{ aura_title:'Discord Moderator Energy', roast:'Moderating a server called "gamers only" at 3am and it absolutely shows. The RGB keyboard isn\'t helping.', score:45, tags:['npc detected','cope arc','background lore'], bars:[{label:'Setup',value:42},{label:'Drip',value:38},{label:'Aura',value:51},{label:'Energy',value:44}] }
+  } : {
+    verdict:'YOU GOT MOGGED', outcome:'lose', subtitle:'CAREER MOG DETECTED',
+    you:{ aura_title:'Broke College Student', roast:'The IKEA furniture and empty energy drinks tell a story. A story of someone deep in their "student arc" with no end in sight.', score:52, tags:['student arc','potential detected','sleeper build'], bars:[{label:'Setup',value:45},{label:'Drip',value:55},{label:'Aura',value:58},{label:'Energy',value:50}] },
+    opponent:{ aura_title:'Startup Founder Aura', roast:'Ring light, Herman Miller, thousand-yard stare of someone who\'s already IPO\'d twice. This man is built different.', score:93, tags:['CEO behavior','actually locked in','final boss'], bars:[{label:'Setup',value:95},{label:'Drip',value:90},{label:'Aura',value:94},{label:'Energy',value:92}] }
+  };
+}
+
+// ══════════════════════════════════════════
+// SHOW RESULT
+// ══════════════════════════════════════════
+function showResult(result) {
+  currentResult = result;
+  showScreen('screen-result');
+
+  document.getElementById('result-bg').className = 'result-bg ' + (result.outcome === 'win' ? 'win' : result.outcome === 'lose' ? 'lose' : '');
+  const v = document.getElementById('result-verdict');
+  v.textContent = result.verdict;
+  v.className = 'result-verdict ' + (result.outcome === 'win' ? 'win' : result.outcome === 'lose' ? 'lose' : 'tie');
+  document.getElementById('result-subtitle').textContent = result.subtitle;
+
+  const youWin = result.outcome === 'win';
+  document.getElementById('card-you').className = 'player-result-card ' + (youWin ? 'winner' : 'loser');
+  document.getElementById('card-opp').className = 'player-result-card ' + (youWin ? 'loser' : 'winner');
+  document.getElementById('badge-you').textContent = youWin ? '🏆 W' : '💀 L';
+  document.getElementById('badge-opp').textContent = youWin ? '💀 L' : '🏆 W';
+  document.getElementById('aura-you').textContent = result.you.aura_title;
+  document.getElementById('roast-you').textContent = result.you.roast;
+  document.getElementById('aura-opp').textContent = result.opponent.aura_title;
+  document.getElementById('roast-opp').textContent = result.opponent.roast;
+
+  renderBars('bars-you', result.you.bars);
+  renderBars('bars-opp', result.opponent.bars);
+  renderTags('tags-you', result.you.tags);
+  renderTags('tags-opp', result.opponent.tags);
+
+  const sy = result.you.score, so = result.opponent.score, tot = sy + so;
+  document.getElementById('score-diff').textContent = (youWin ? '+' : '-') + Math.abs(sy - so) + ' pts';
+
+  setTimeout(() => {
+    document.getElementById('bar-you').style.width = (sy/tot*100) + '%';
+    document.getElementById('bar-opp').style.width = (so/tot*100) + '%';
+    animateNum('score-you', sy); animateNum('score-opp', so);
+    document.querySelectorAll('.score-bar-fill').forEach(f => { f.style.width = f.dataset.v + '%'; });
+  }, 400);
+
+  if (result.outcome === 'win') {
+    mogStreak++;
+    document.getElementById('streak-num').textContent = mogStreak;
+    if (mogStreak >= 2) document.getElementById('streak-badge').classList.add('show');
+  } else {
+    mogStreak = 0;
+    document.getElementById('streak-badge').classList.remove('show');
+  }
+  cleanupRTC();
+}
+
+function renderBars(id, bars) {
+  document.getElementById(id).innerHTML = bars.map(b =>
+    `<div class="score-bar-row"><div class="score-bar-label">${b.label}</div><div class="score-bar-track"><div class="score-bar-fill" data-v="${b.value}" style="width:0%"></div></div><div class="score-bar-value">${b.value}</div></div>`
+  ).join('');
+}
+function renderTags(id, tags) {
+  document.getElementById(id).innerHTML = tags.map(t => `<span class="tag">${t}</span>`).join('');
+}
+function animateNum(id, target) {
+  const el = document.getElementById(id); let cur = 0;
+  const iv = setInterval(() => { cur = Math.min(cur + target/40, target); el.textContent = Math.round(cur); if (cur >= target) clearInterval(iv); }, 30);
+}
+
+// ══════════════════════════════════════════
+// ACTIONS
+// ══════════════════════════════════════════
+async function doSkip() { showScreen('screen-battle'); setWaitingText('Searching opponent...'); await cleanupRTC(); setTimeout(joinQueue, 300); }
+async function doRematch() { showScreen('screen-battle'); setWaitingText('Searching opponent...'); setTimeout(joinQueue, 300); }
+function shareResult() {
+  if (navigator.share && currentResult) {
+    navigator.share({ title:'Omoggle — ' + currentResult.verdict, text:`${currentResult.you.aura_title} vs ${currentResult.opponent.aura_title}`, url: location.href }).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(location.href).then(() => showToast('🔗 Link copiado'));
+  }
+}
+
+// ══════════════════════════════════════════
+// UI HELPERS
+// ══════════════════════════════════════════
+function setWaitingText(t) { const e = document.getElementById('waiting-text'); if(e) e.textContent = t; }
+function setBattleStatus(t) { document.getElementById('battle-status').textContent = t; }
+function setConnPill(type, text) {
+  const el = document.getElementById('conn-pill');
+  el.textContent = text;
+  el.className = 'conn-pill' + (type ? ' show ' + type : '');
+}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>
